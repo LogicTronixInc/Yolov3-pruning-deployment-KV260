@@ -341,6 +341,8 @@ def get_dataloader(voc_path,batch_size,same_subset = False, subset_length = 8,tr
         train_transform = AugmentTransform(input_size = input_size,dataset = train_dataset)
         train_dataset.load_transformer(train_transform)
         train_subset = Subset(train_dataset,indices = subset_index)
+
+        
         return DataLoader(dataset=train_subset, collate_fn=Dataset.collate_fn, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=1,drop_last=True)
     
 
