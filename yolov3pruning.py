@@ -14,6 +14,7 @@ import sys
 import os
 import argparse
 from typing import Tuple, Optional
+import platform
 from pruning_utils import collect_ignored_convs,validate,load_model,get_dataloader
 
 
@@ -23,7 +24,6 @@ if str(ROOT) not in sys.path:
 
 from utils import YOLOv3Loss,Evaluator,set_lr
 from model import do_sigmoid
-
 
 class AverageMeter:
     def __init__(self):
@@ -39,7 +39,21 @@ class AverageMeter:
         self.count += n
         self.avg = self.sum / max(1, self.count)
 
-def train_one_epoch(model, loader, criterion, optimizer, device):
+
+OS_SYSTEM = platform.system()
+
+
+def setup(rank,world_size):
+    if OS_SYSTEM == "Linux":
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = "12345"
+        dist.init_process_group("nccl",rank = rank,world_size = world_size)
+
+def cleanup():
+    if OS_SYSTEM == "Linux":
+        dist.destroy_process_group()
+
+def train_one_epoch(model, loader, criterion, optimizer, device,scaler):
     model.train()
     multipart_loss_meter = AverageMeter()
     obj_loss_meter = AverageMeter()
@@ -73,18 +87,10 @@ def train_one_epoch(model, loader, criterion, optimizer, device):
 @torch.no_grad()
 def calc_mAP(args,model,val_loader,anchors,dpu:bool = True):
     model.eval()
-    subset_class = val_loader.dataset
-    base_dataset_class = val_loader.dataset.dataset
-    idx = list(subset_class.indices)
-
-    base_dataset_class.generate_mAP_source(save_dir = Path("./data/eval_src"),mAP_filename =mAP_filename,indices = idx)
-    args.mAP_filepath = Path(base_dataset_class.mAP_filepath)
+    args.mAP_filepath = Path(val_loader.dataset.dataset.mAP_filepath)
     args.exp_path = Path(args.exp_path)
-
     os.makedirs(args.exp_path, exist_ok=True)
-
     evaluator = Evaluator(args.mAP_filepath)
-
     mAP_dict,eval_text = validate(args,anchors = anchors, dataloader = val_loader,model = model,evaluator = evaluator,save_result = True,dpu  = True, save_filename = "Pruned_map.txt")
 
     return mAP_dict,eval_text
@@ -190,6 +196,15 @@ if __name__ == "__main__":
         ]
 
     parser = argparse.ArgumentParser(description = "YOLOv3 Pruning")
+
+
+    parser.add_argument('--model',
+                        type = str,
+                        help = "Path to .pt file.")
+    parser.add_argument('--data',
+                        type = str,
+                        help = "Path to .yaml files for data")
+
     parser.add_argument('--img-size',
                         type = int,
                         default = 416,
@@ -232,11 +247,11 @@ if __name__ == "__main__":
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    model = load_model(mode = "dpu",input_size = 416,num_classes = 20,model_type = "base",anchors = anchors,device = device,model_path = '/home/logictronix01/saurav/YOLOv3/weights/yolov3-base.pt').to(device)
+    model = load_model(mode = "dpu",input_size = 416,num_classes = 20,model_type = "base",anchors = anchors,device = device,model_path = args.model).to(device)
     ignored_layers = collect_ignored_convs(model,keep_stem = False,keep_stage_entry = False,)    
 
-    train_loader = get_dataloader(voc_path = '/home/logictronix01/saurav/YOLOv3/data/voc.yaml',batch_size = 8,same_subset = False, subset_length = 2000, train = True)
-    test_loader = get_dataloader(voc_path = '/home/logictronix01/saurav/YOLOv3/data/voc.yaml',batch_size = 8,same_subset = False,subset_length = 100, train = False)
+    train_loader = get_dataloader(voc_path = args.data,batch_size = 8,same_subset = False, subset_length = 100, train = True,mAP_filename='eval_train.json')
+    test_loader = get_dataloader(voc_path = args.data,batch_size = 8,same_subset = False,subset_length = 100, train = False,mAP_filename = 'eval_test.json')
 
     #Unit Test: evaluate function
     criterion = YOLOv3Loss(input_size=416,num_classes = 20,anchors = model.anchors)    
@@ -245,14 +260,14 @@ if __name__ == "__main__":
     print(mAP_dict['all']['mAP_50'])
 
     # Unit test: train_one_epoch function
-    optimizer = optim.SGD(model.parameters(),lr = args.base_lr,momentum = args.momentum,weight_decay = args.weight_decay)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones = args.lr_decay,gamma = 0.1)
+    # optimizer = optim.SGD(model.parameters(),lr = args.base_lr,momentum = args.momentum,weight_decay = args.weight_decay)
+    # scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones = args.lr_decay,gamma = 0.1)
 
-    # loss = train_one_epoch(model,train_loader,criterion,optimizer,device)
-    # print(loss)
-    example_inputs = torch.randn(1,3,416,416).to(device)
-    model = taylor_prune(model,example_inputs,train_loader,criterion,device=device,ignored_layers = ignored_layers,finetune_epochs = 3,round_to = 8)
+    # # loss = train_one_epoch(model,train_loader,criterion,optimizer,device)
+    # # print(loss)
+    # example_inputs = torch.randn(1,3,416,416).to(device)
+    # model = taylor_prune(model,example_inputs,train_loader,criterion,device=device,ignored_layers = ignored_layers,finetune_epochs = 3,round_to = 8)
         
-    loss,mAP_dict = evaluate(args = args,model = model,loader = test_loader,criterion=criterion,anchors = model.anchors,device = device,desc = "eval")
-    print(loss)
-    print(mAP_dict['all']['mAP_50'])
+    # loss,mAP_dict = evaluate(args = args,model = model,loader = test_loader,criterion=criterion,anchors = model.anchors,device = device,desc = "eval")
+    # print(loss)
+    # print(mAP_dict['all']['mAP_50'])

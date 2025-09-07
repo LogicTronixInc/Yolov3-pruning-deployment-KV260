@@ -6,7 +6,9 @@ from tqdm import tqdm
 import numpy as np
 from pathlib import Path
 import sys
-
+from torch.utils.data import DataLoader,distributed
+import platform
+import os
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -328,7 +330,6 @@ def get_dataloader(voc_path,batch_size,same_subset = False, subset_length = 8,tr
         val_subset = Subset(val_dataset,indices = subset_index)
         idx = list(val_subset.indices)
         val_subset.dataset.generate_mAP_source(save_dir = Path("./data/eval_src"),mAP_filename = mAP_filename,indices = idx)
-        
         return DataLoader(dataset=val_subset, collate_fn=Dataset.collate_fn, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=1,drop_last=True)
     
     else:
@@ -341,9 +342,10 @@ def get_dataloader(voc_path,batch_size,same_subset = False, subset_length = 8,tr
         train_transform = AugmentTransform(input_size = input_size,dataset = train_dataset)
         train_dataset.load_transformer(train_transform)
         train_subset = Subset(train_dataset,indices = subset_index)
-
-        
-        return DataLoader(dataset=train_subset, collate_fn=Dataset.collate_fn, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=1,drop_last=True)
+        idx = list(train_subset.indices)
+        train_subset.dataset.generate_mAP_source(save_dir = Path("./data/eval_src"),mAP_filename = mAP_filename,indices = idx)
+        train_sampler = distributed.DistributedSampler(train_subset,num_replicas = 1,rank = 0,shuffle = True)
+        return DataLoader(dataset=train_subset, collate_fn=Dataset.collate_fn, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=1,drop_last=True,sampler = train_sampler)
     
 
 def load_model(mode:str,device: str,input_size: int, num_classes: int,model_type: str,anchors,model_path:str):
