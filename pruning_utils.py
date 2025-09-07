@@ -271,7 +271,7 @@ def validate(args,anchors, dataloader, model, evaluator, dpu:bool = False,save_r
 
     for _, minibatch in enumerate(dataloader):
         filenames, images, shapes = minibatch[0], minibatch[1], minibatch[3]
-        predictions = model(images.to("cpu"))
+        predictions = model(images.to("cuda"))
         if dpu:
             decoded_52 = BoxDecoder(predictions[0],torch.tensor(anchors[0:3])).decode_predictions()
             decoded_26 = BoxDecoder(predictions[1],torch.tensor(anchors[3:6])).decode_predictions()
