@@ -193,7 +193,7 @@ def fuse_model(m: nn.Module):
 def count_bn(model): 
     return sum(isinstance(x, nn.BatchNorm2d) for x in model.modules())
 
-def collect_ignored_convs(model, keep_stem=False, keep_stage_entry=False):
+def collect_ignored_convs(model, keep_stem=False, keep_stage_entry=False,keep_exit_stage = False):
     ignored = set()
     for name, m in model.named_modules():
         if not isinstance(m, nn.Conv2d):
@@ -203,7 +203,7 @@ def collect_ignored_convs(model, keep_stem=False, keep_stage_entry=False):
             ignored.add(m)
             continue
 
-        if ".res_block" in name and ".conv2.conv.0" in name:
+        if keep_exit_stage and ".res_block" in name and ".conv2.conv.0" in name:
             ignored.add(m)
             continue
 
