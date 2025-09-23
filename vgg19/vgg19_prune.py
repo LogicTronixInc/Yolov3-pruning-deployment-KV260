@@ -12,11 +12,6 @@ import time
 import argparse
 import tqdm
 
-ROOT = Path(__file__).resolve().parents[1]
-
-if str(ROOT) not in sys.path:
-    sys.path.append(str(ROOT))
-
 from cls_net_utils import build_resnet18,accuracy,cifar10_loaders,train_one_epoch,evaluate
 
 try:
