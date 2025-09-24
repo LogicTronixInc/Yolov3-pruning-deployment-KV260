@@ -12,7 +12,7 @@ import time
 import argparse
 import tqdm
 
-from cls_net_utils import build_resnet18,accuracy,cifar10_loaders,train_one_epoch,evaluate
+from cls_net_utils import build_vgg19,cifar10_loaders,train_one_epoch,evaluate
 
 try:
     import torch_pruning as tp
@@ -126,7 +126,7 @@ def main():
 
     if (args.resume is None) and (args.finetune_model is None):
         # fresh / float training
-        model = build_resnet18(num_classes=10, pretrained=True)
+        model = build_vgg19(num_classes=10, pretrained=True)
         model.to(device)
         optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
         sched = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
