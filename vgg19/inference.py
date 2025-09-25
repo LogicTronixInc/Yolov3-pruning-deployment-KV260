@@ -1,12 +1,15 @@
 import argparse
 import time
 from pathlib import Path
+import cv2
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
 import torchvision.transforms as T
+
+import numpy as np
 
 from cls_net_utils import build_vgg19   
 
@@ -30,7 +33,7 @@ def build_transform(input_size: int):
 
 def load_model(model_path: Path, device: torch.device, num_classes=10):
     try:
-        obj = torch.load(str(model_path), map_location="cpu")
+        obj = torch.load(str(model_path), map_location="cpu",weights_only=False)
         if isinstance(obj, nn.Module):
             print(f"[Load] Full model detected at {model_path}")
             model = obj
@@ -61,6 +64,7 @@ def main():
 
     transform = build_transform(args.input_size)
     img = Image.open(args.image).convert("RGB")
+    
     x = transform(img).unsqueeze(0).to(device)
 
     # Warmup
@@ -79,13 +83,29 @@ def main():
 
     fps = args.repeat / (end - start)
 
-    # Final prediction
+    # Final prediction and image display
     probs = F.softmax(logits, dim=1)[0]
     pred_idx = probs.argmax().item()
     pred_name = CIFAR10_CLASSES[pred_idx]
 
     print(f"[Result] Predicted class: {pred_name} (idx={pred_idx}, prob={probs[pred_idx]:.4f})")
     print(f"[Perf] FPS: {fps:.2f} (averaged over {args.repeat} runs)")
+    
+
+    disp_img = cv2.resize(np.array(img),(224,224))
+    
+    cv2.putText(disp_img,f"{pred_name}: {probs[pred_idx]:.4f}",(10,30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0,255,0),
+                2)
+    cv2.putText(disp_img,f"FPS: {fps:.2f}",(10,60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0,255,0),
+                2)
+    cv2.imshow("Image", disp_img)
+    cv2.waitKey((0))
 
 
 if __name__ == "__main__":
