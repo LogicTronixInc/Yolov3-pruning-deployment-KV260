@@ -89,7 +89,8 @@ def is_full_model_file(p: Path) -> bool:
         return False
     
 def main():
-    parser = argparse.ArgumentParser(description="ResNet18 pruning→quantization on CIFAR-10")
+    parser = argparse.ArgumentParser(description="VGG19 pruning→quantization on CIFAR-10")
+    parser.add_argument('--model',required=False,type = str)
     parser.add_argument('--data-dir', type=str, default='./data')
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--batch-size', type=int, default=128)
@@ -151,35 +152,35 @@ def main():
             model.to(device)
         else:
             print(f"Loading state_dict from: {resume_path}")
-            model = build_resnet18(num_classes=10, pretrained=True)
+            model = build_vgg19(num_classes=10, pretrained=True)
             ckpt = torch.load(str(resume_path), map_location='cpu')
             model.load_state_dict(ckpt['state_dict'])
             model.to(device)
         
         if args.finetune_model:
             pruned_path = Path(args.resume)
-        if is_full_model_file(pruned_path):
-            print(f"Loading state_dict from: {pruned_path}")
-            print(f"Finetuning pruned model....")
-            model = torch.load(str(resume_path), map_location='cpu')
-            model.to(device)
-            optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-            sched = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
-            va_loss, va_top1, va_top5 = evaluate(model, test_loader, criterion, device, desc="loaded")
-            best_top1 = va_top1
-            
-            for epoch in range(args.epochs):
-                t0 = time.time()
-                tr_loss, tr_top1, tr_top5 = train_one_epoch(model, train_loader, criterion, optimizer, device)
-                va_loss, va_top1, va_top5 = evaluate(model, test_loader, criterion, device, desc=f"float@e{epoch+1}")
-                sched.step()
-                if va_top1 > best_top1:
-                    best_top1 = va_top1
-                torch.save(model, 'best_pruned.pth')
-                print(f"[Epoch {epoch+1}/{args.epochs}] train: loss={tr_loss:.4f} top1={tr_top1:.2f} | val: top1={va_top1:.2f} | time={(time.time()-t0):.1f}s")
+            if is_full_model_file(pruned_path):
+                print(f"Loading state_dict from: {pruned_path}")
+                print(f"Finetuning pruned model....")
+                model = torch.load(str(resume_path), map_location='cpu')
+                model.to(device)
+                optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+                sched = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+                va_loss, va_top1, va_top5 = evaluate(model, test_loader, criterion, device, desc="loaded")
+                best_top1 = va_top1
+                
+                for epoch in range(args.epochs):
+                    t0 = time.time()
+                    tr_loss, tr_top1, tr_top5 = train_one_epoch(model, train_loader, criterion, optimizer, device)
+                    va_loss, va_top1, va_top5 = evaluate(model, test_loader, criterion, device, desc=f"float@e{epoch+1}")
+                    sched.step()
+                    if va_top1 > best_top1:
+                        best_top1 = va_top1
+                    torch.save(model, 'best_pruned.pth')
+                    print(f"[Epoch {epoch+1}/{args.epochs}] train: loss={tr_loss:.4f} top1={tr_top1:.2f} | val: top1={va_top1:.2f} | time={(time.time()-t0):.1f}s")
 
-        else:
-            raise TypeError(f"{pruned_path} must be full model. Pass pruned model .pth file not state_dict")
+            else:
+                raise TypeError(f"{pruned_path} must be full model. Pass pruned model .pth file not state_dict")
 
 
         print("Saved pruned checkpoint: best_pruned.pth")

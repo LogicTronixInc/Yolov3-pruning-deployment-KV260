@@ -4,6 +4,9 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 from tqdm import tqdm
 from typing import Tuple, Optional
+import time
+import torch.optim as optim
+from pathlib import Path
 
 
 class AverageMeter:
@@ -131,3 +134,27 @@ def evaluate(model, loader, criterion, device, desc="eval"):
     print(f"[{desc}] Loss: {loss_meter.avg:.4f} | Top1: {top1_meter.avg:.2f}% | Top5: {top5_meter.avg:.2f}%")
     return loss_meter.avg, top1_meter.avg, top5_meter.avg
 
+def is_full_model_file(p: Path) -> bool:
+    try:
+        obj = torch.load(str(p), map_location="cpu")
+        return isinstance(obj, nn.Module)
+    except Exception:
+        return False
+
+def train(args,model,train_loader,test_loader,device,mode = 'float'):
+    criterion = nn.CrossEntropyLoss().to(device)
+    optimizer = optim.SGD(model.parameters(),lr = args.lr,momentum = args.momentum,weight_decay=args.weight_decay)
+    sched = optim.lr_scheduler.CosineAnnealingLR(optimizer = optimizer, T_max = args.epochs)
+    va_loss,va_top1,va_top5 =  evaluate(model, test_loader, criterion, device, desc="loaded")
+    best_top1 = va_top1
+
+    for epoch in range(args.epochs):
+        t0 = time.time()
+        tr_loss, tr_top1, tr_top5 = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        va_loss, va_top1, va_top5 = evaluate(model, test_loader, criterion, device, desc=f"float@e{epoch+1}")
+        sched.step()
+        if va_top1 > best_top1:
+            best_top1 = va_top1
+        torch.save(model, f'./temp/best_{mode}.pth')
+        print(f"[Epoch {epoch+1}/{args.epochs}] train: loss={tr_loss:.4f} top1={tr_top1:.2f} | val: top1={va_top1:.2f} | time={(time.time()-t0):.1f}s")
+    print(f"Saved {mode} checkpoint: best_{mode}.pth")
